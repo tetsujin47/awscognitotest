@@ -7,6 +7,8 @@ const {
   InitiateAuthCommand,
   RespondToAuthChallengeCommand,
 } = require("@aws-sdk/client-cognito-identity-provider");
+// aws-jwt-verify をインポート
+const { CognitoJwtVerifier } = require("aws-jwt-verify");
 
 const app = express();
 const port = 3000;
@@ -31,6 +33,13 @@ const cognitoClient = new CognitoIdentityProviderClient({
   // 必要に応じて credentials プロパティを明示的に設定することも可能です。
 });
 
+// CognitoJwtVerifier の初期化
+const verifier = CognitoJwtVerifier.create({
+  userPoolId: cognitoUserPoolId,
+  tokenUse: "id", // IDトークンを検証
+  clientId: cognitoClientId,
+});
+
 // SecretHash を計算する関数
 const calculateSecretHash = (username) => {
   if (!cognitoClientSecret) {
@@ -46,6 +55,27 @@ const calculateSecretHash = (username) => {
 // ミドルウェアの設定
 app.use(cors()); // CORS を有効にする
 app.use(express.json()); // JSON リクエストボディをパースする
+
+// ===== 認証ミドルウェア =====
+const authenticateToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer トークンを取得
+
+  if (token == null) {
+    return res.status(401).json({ message: "認証トークンが必要です。" }); // トークンがない場合は401
+  }
+
+  try {
+    // トークンを検証
+    const payload = await verifier.verify(token);
+    console.log("Token is valid. Payload:", payload);
+    req.user = payload; // 検証済みペイロードをリクエストオブジェクトに追加 (任意)
+    next(); // 検証成功、次のミドルウェア/ルートハンドラへ
+  } catch (error) {
+    console.error("Token verification failed:", error);
+    return res.status(403).json({ message: "無効なトークンです。" }); // 検証失敗は403
+  }
+};
 
 // ログインエンドポイント
 app.post("/login", async (req, res) => {
@@ -200,6 +230,16 @@ app.post("/complete-new-password", async (req, res) => {
         .json({ message: "パスワード設定中にエラーが発生しました。" });
     }
   }
+});
+
+// ===== 保護されたAPIエンドポイント =====
+app.get("/protected-api", authenticateToken, (req, res) => {
+  // authenticateToken ミドルウェアによって認証済み
+  res.json({
+    message: "これは保護されたデータです。認証に成功しました！",
+    // 必要であれば req.user からユーザー情報を利用できる
+    // userInfo: req.user
+  });
 });
 
 app.listen(port, () => {

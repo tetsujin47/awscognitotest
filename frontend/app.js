@@ -102,13 +102,14 @@ newPasswordForm.addEventListener("submit", async (event) => {
 
 // --- ヘルパー関数 ---
 function handleSuccessfulLogin(data) {
-  messageDiv.textContent = `${data.message} (ID Token: ${data.idToken.substring(
-    0,
-    30
-  )}...)`;
+  messageDiv.textContent = `${data.message}`;
   messageDiv.className = "success";
-  console.log("Login successful:", data);
-  // 例: localStorage.setItem("idToken", data.idToken);
+  console.log("Login successful, storing idToken:", data.idToken);
+  localStorage.setItem("idToken", data.idToken); // IDトークンをlocalStorageに保存
+  // ログインフォームと新パスワードフォームを非表示にする
+  loginForm.style.display = "none";
+  newPasswordForm.style.display = "none";
+  apiSectionDiv.style.display = "block"; // API呼び出しセクションを表示
 }
 
 function handleFetchError(error) {
@@ -116,3 +117,53 @@ function handleFetchError(error) {
   messageDiv.className = "error";
   console.error("Network or other error:", error);
 }
+
+// --- 認証付きAPI呼び出し処理 ---
+const apiCallButton = document.getElementById("apiCallButton");
+const apiResponseMessageDiv = document.getElementById("apiResponseMessage");
+const apiSectionDiv = document.getElementById("apiSection"); // APIセクションへの参照
+const protectedApiUrl = "http://localhost:3000/protected-api"; // 保護されたAPIエンドポイント (バックエンドで実装が必要)
+
+apiCallButton.addEventListener("click", async () => {
+  apiResponseMessageDiv.textContent = "";
+  apiResponseMessageDiv.className = "";
+
+  const token = localStorage.getItem("idToken"); // 保存したトークンを取得
+
+  if (!token) {
+    apiResponseMessageDiv.textContent =
+      "エラー: ログインしていません (トークンが見つかりません)。";
+    apiResponseMessageDiv.className = "error";
+    return;
+  }
+
+  try {
+    const response = await fetch(protectedApiUrl, {
+      method: "GET", // または適切なメソッド
+      headers: {
+        Authorization: `Bearer ${token}`, // Authorizationヘッダーにトークンを設定
+        "Content-Type": "application/json", // 必要に応じて設定
+      },
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      apiResponseMessageDiv.textContent = `APIレスポンス: ${JSON.stringify(
+        data
+      )}`;
+      apiResponseMessageDiv.className = "success";
+      console.log("API call successful:", data);
+    } else {
+      apiResponseMessageDiv.textContent = `APIエラー: ${
+        data.message || response.status
+      }`;
+      apiResponseMessageDiv.className = "error";
+      console.error("API call failed:", data);
+    }
+  } catch (error) {
+    apiResponseMessageDiv.textContent = "エラー: APIとの通信に失敗しました。";
+    apiResponseMessageDiv.className = "error";
+    console.error("API fetch error:", error);
+  }
+});
